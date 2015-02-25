@@ -38,8 +38,8 @@ passdb {
   args = /etc/dovecot/dovecot-sql.conf.ext
 }
 userdb {
-  driver = static
-  args = uid=mail gid=mail home=$STORAGE_ROOT/mail/mailboxes/%d/%n
+  driver = sql
+  args = /etc/dovecot/dovecot-sql.conf.ext
 }
 EOF
 
@@ -49,6 +49,8 @@ driver = sqlite
 connect = $db_path
 default_pass_scheme = SHA512-CRYPT
 password_query = SELECT email as user, password FROM users WHERE email='%u';
+user_query = SELECT "$STORAGE_ROOT/mail/mailboxes/" || %d AS home, 'mail' AS uid, 'mail' AS gid, '*:storage=' || quota AS quota_rule FROM users WHERE email='%u'
+
 EOF
 chmod 0600 /etc/dovecot/dovecot-sql.conf.ext # per Dovecot instructions
 
