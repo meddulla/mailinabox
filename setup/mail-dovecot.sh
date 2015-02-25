@@ -148,6 +148,56 @@ EOF
 cp conf/sieve-spam.txt /etc/dovecot/sieve-spam.sieve
 sievec /etc/dovecot/sieve-spam.sieve
 
+# Quotas
+sed -i "s/#mail_plugins = .*/mail_plugins = \$mail_plugins quota/" /etc/dovecot/conf.d/10-mail.conf
+sed -i "s/#mail_plugins = .*/mail_plugins = \$mail_plugins imap_quota/" /etc/dovecot/conf.d/20-imap.conf
+
+cat >> /etc/dovecot/conf.d/90-quota.conf << EOF;
+plugin {
+  quota = maildir:User quota
+  # 0 = unlimited by default
+  quota_rule = *:storage=0
+  quota_rule2 = Trash:storage=+10%%
+  quota_rule3 = spam:ignore
+}
+
+plugin {
+  quota_warning = storage=95%% quota-warning 95 %u %d
+  quota_warning2 = storage=80%% quota-warning 80 %u %d
+}
+service quota-warning {
+  executable = script $STORAGE_ROOT/mail/quota-warning.sh
+  user = mail
+  unix_listener quota-warning {
+        user = mail
+  }
+}
+EOF
+
+cat > $STORAGE_ROOT/mail/quota-warning.sh << EOF;
+#!/bin/sh
+
+PERCENT=$1
+USER=$2
+DOMAIN=$3
+FROM="postmaster@$DOMAIN"
+qwf="/tmp/quota.warning.$$"
+
+echo "From: $FROM
+To: $USER
+To: $FROM
+Subject: Your email quota is $PERCENT% full
+Content-Type: text/plain; charset="UTF-8"
+
+Your mailbox is now $PERCENT%+ full, please make some more room or contact your administrator ($FROM)." >> $qwf
+
+cat $qwf | /usr/sbin/sendmail -f $FROM "$USER"
+rm -f $qwf
+
+exit 0
+
+
+
 # PERMISSIONS
 
 # Ensure configuration files are owned by dovecot and not world readable.
@@ -161,6 +211,10 @@ chown -R mail.mail $STORAGE_ROOT/mail/mailboxes
 # Same for the sieve scripts.
 mkdir -p $STORAGE_ROOT/mail/sieve
 chown -R mail.mail $STORAGE_ROOT/mail/sieve
+
+# Ensure quota warning script is executable and owned by mail user
+chmod +x $STORAGE_ROOT/mail/quota-warning.sh
+chown mail.mail $STORAGE_ROOT/mail/quota-warning.sh
 
 # Allow the IMAP port in the firewall.
 ufw_allow imaps
